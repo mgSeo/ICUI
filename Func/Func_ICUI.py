@@ -42,8 +42,8 @@ def FCES(ev):
         for l in time_series_list:
             header.append('arr_{}_'.format(arr) + l)
         idx = ev[ev['serviceFrom']==arr_set[0]].index
-        if ev['serviceTo'][idx].max()-arr_set[0] > dur:
-            dur = ev['serviceTo'][idx].max()-arr_set[0]
+        if ev['serviceTo'][idx].max()-arr_set[0] + 1 > dur:
+            dur = ev['serviceTo'][idx].max()-arr_set[0] + 1
     fces_ts = pd.DataFrame(np.zeros([dur,len(header)]),columns=header)
 
     cluster_header = ['From', 'To','initialSOC','eff','duration','n_ev']
@@ -55,7 +55,7 @@ def FCES(ev):
         fces_cluster.loc[arr,'To'] = ev['serviceTo'][idx].max()
         fces_cluster.loc[arr,'initialSOC'] = sum(ev['initialSOC'][idx] * ev['capacity'][idx] / 100)
         fces_cluster.loc[arr,'eff'] = ev['eff'][idx].mean()
-        fces_cluster.loc[arr,'duration'] = fces_cluster['To'][arr] - fces_cluster['From'][arr]
+        fces_cluster.loc[arr,'duration'] = fces_cluster['To'][arr] - fces_cluster['From'][arr] + 1
         fces_cluster.loc[arr,'n_ev'] = len(idx)
     
     # def Value of Dataframe, time-series(ts)
@@ -74,7 +74,7 @@ def FCES(ev):
         temp_header = []
         for l in time_series_list:
             temp_header.append('arr_{}_'.format(arr)+l)
-        fces_ts.loc[:int(fces_cluster['duration'][arr])-1,temp_header] = temp.to_numpy()
+        fces_ts.loc[:int(fces_cluster['duration'][arr]-1),temp_header] = temp.to_numpy()
     
     return fces_ts, fces_cluster
 

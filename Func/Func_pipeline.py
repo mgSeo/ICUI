@@ -3,16 +3,18 @@ pd.set_option('mode.chained_assignment',  None)
 import math
 def func(ev, step):
     # Pre-process
-    delta = 2;
-    # re-arrange the 'serviceTo'
-    idx = ev[ev['serviceFrom'] >= ev['serviceTo']].index
-    ev['serviceTo'][idx] = 24 # 최대 horizon: ~24시
+    delta = 2
+    
 
     # 1h -> 15min
     ev['serviceFrom'] = ev.serviceFrom*4
     ev['serviceTo'] = ev.serviceTo*4
 
-    ev['duration'] = ev.serviceTo - ev.serviceFrom
+    # re-arrange the 'serviceTo'
+    idx = ev[ev['serviceFrom'] >= ev['serviceTo']].index
+    ev['serviceTo'][idx] = 95 # 최대 horizon: ~24시
+
+    ev['duration'] = ev.serviceTo - ev.serviceFrom + 1
     idx = ev['duration'] > 2    
     ev['minimumSOC'] = 8
     ev['maximumSOC'] = 92
@@ -52,6 +54,6 @@ def func(ev, step):
         ev['goalSOC'][c_idx] = ev.goalSOC[c_idx] + capability[c_idx]*(cluster.step[k]*cluster.interval[k] + delta)
     
     
-    cluster['duration'] = cluster.To - cluster.From # cluster's duration
+    cluster['duration'] = cluster.To - cluster.From + 1 # cluster's duration
 
     return ev,cluster

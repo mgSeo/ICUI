@@ -51,11 +51,11 @@ def objective_function(B,goalSoC,ev):
 def constraints(B,p,goalSoC,P_A,ev,relax_param):
     ### Constraints:
     # Power 같게 (FCES <=> EV)
-    for t in range(max(ev['serviceTo'])):
+    for t in range(max(ev['serviceTo'])+1):
         X = 0
         temp = 0
         for vdx in range(len(ev)):
-            if ev['serviceFrom'][vdx] <= t < ev['serviceTo'][vdx]:
+            if ev['serviceFrom'][vdx] <= t <= ev['serviceTo'][vdx]:
                 idx = t - ev['serviceFrom'][vdx]
                 X += p[vdx][idx]
                 temp = 1

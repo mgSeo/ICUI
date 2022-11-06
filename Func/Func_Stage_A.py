@@ -46,6 +46,14 @@ def constraints(A,p,fces_ts,fces_cluster):
             A.addConstr(soe >= fces_ts['arr_{}_minimumSOC'.format(vdx)][idx])
         
     # demand
-    # update
-
+    for vdx in range(len(fces_cluster)):
+        demand_set = fces_ts['arr_{}_demand'.format(vdx)].unique()
+        for d in range(1,len(demand_set)):
+            point = fces_ts[fces_ts['arr_{}_demand'.format(vdx)] == demand_set[d]].index[0]
+            soe = fces_cluster['initialSOC'][vdx] + sum([p[vdx][idx] for idx in range(point)])
+            A.addConstr(soe >= demand_set[d])
+            
     return A
+
+def updates():
+    return 0
