@@ -21,8 +21,8 @@ def func(fces_ts,fces_cluster,w_obj):
     A = objective_function(A,w_obj,p,fces_ts,fces_cluster)   
     A.optimize()
 
-    Fleet_P = arranger.A(p,fces_ts,fces_cluster)
-    return Fleet_P
+    P_A, SoC_A = arranger.A(p,fces_ts,fces_cluster)
+    return P_A, SoC_A
     
 def objective_function(A,w_obj,p,fces_ts,fces_cluster):
     obj_smp = 0
@@ -37,22 +37,23 @@ def objective_function(A,w_obj,p,fces_ts,fces_cluster):
     return A
 
 def constraints(A,p,fces_ts,fces_cluster):
-    # soc
+    # SoC boundaries
     for vdx in range(len(fces_cluster)):
         soe = fces_cluster['initialSOC'][vdx] 
         for idx in range(int(fces_cluster['duration'][vdx])):
             soe += p[vdx][idx]
-            A.addConstr(soe <= fces_ts['arr_{}_maximumSOC'.format(vdx)][idx])
+            A.addConstr(soe <= fces_cluster['maximumSOC'][vdx])
             A.addConstr(soe >= fces_ts['arr_{}_minimumSOC'.format(vdx)][idx])
-        
-    # demand
+
+    # Demand Curve ∋ Goal-SoC
     for vdx in range(len(fces_cluster)):
         demand_set = fces_ts['arr_{}_demand'.format(vdx)].unique()
-        for d in range(1,len(demand_set)):
+        # for d in range(1,len(demand_set)):
+        for d in range(1,2):
             point = fces_ts[fces_ts['arr_{}_demand'.format(vdx)] == demand_set[d]].index[0]
-            soe = fces_cluster['initialSOC'][vdx] + sum([p[vdx][idx] for idx in range(point)])
+            soe = fces_cluster['initialSOC'][vdx] + sum([p[vdx][idx] for idx in range(point+1)])
             A.addConstr(soe >= demand_set[d])
-            
+
     return A
 
 def updates():

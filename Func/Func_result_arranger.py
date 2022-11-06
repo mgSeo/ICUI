@@ -22,7 +22,7 @@ def A(p,fces_ts,fces_cluster):
             Fleet_P['arr_{}'.format(vdx)][t] = p[vdx][idx].x
             SoC['arr_{}'.format(vdx)][t] = soe / fces_ts['arr_{}_capacity'.format(vdx)][idx] * 100
 
-    return Fleet_P
+    return Fleet_P, SoC
 
 def B(p,ev):
     header = []
