@@ -19,18 +19,67 @@ def func(ev,w_obj):
 
     P_A,SoC_A = stage_A.func(fces_ts,fces_cluster,w_obj)
     P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
+    tol = 2
+    while 1:
+        # Check feasiblity
+        if len(SoC_B[SoC_B > 92+tol]) == 0 and len(SoC_B[SoC_B< 8-tol]) == 0: break # Stage-A is feasible
 
-    # Check, Stage_B feasiblity.
-    ## ok: done, no: go to while loop
-
-    # while, tol < some level.
-    Updater()
-    stage_A.updated()
-    stage_B.relaxed()
+        # Not Feasible.
+        fault = Updater(SoC_B,fces_cluster,ev)
+        stage_A.updated()
+        P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
     ## check tol
 
 
     return 0
+def Updater(SoC_B,fces_cluster,ev):
+    header = ['F_id','idx','amount']
+    fault =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
+    f = 0
+    for fdx in range(len(fces_cluster)):
+        ev_set = ev[ev['serviceFrom']==fces_cluster['From'][fdx]]
+        ev_set = ev_set.reset_index()
+        for vdx in range(len(ev_set)):
+            # SoC_B['ev_{}'.format(ev_set['id'][vdx])]
+            # I1 = SoC_B[ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] > ev_set['maximumSOC'][vdx]].index
+            # I1 = SoC_B[ SoC_B.loc[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx],'ev_{}'.format(ev_set['id'][vdx])] > ev_set['maximumSOC'][vdx]].index
+            # I2 = SoC_B[ SoC_B.loc[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx],'ev_{}'.format(ev_set['id'][vdx])] < ev_set['minimumSOC'][vdx]].index
+            I1 = SoC_B[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]][ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] > ev_set['maximumSOC'][vdx]].index
+            I2 = SoC_B[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]][ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] < ev_set['minimumSOC'][vdx]].index
+            # I2 = SoC_B[ SoC_B.loc[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx],'ev_{}'.format(ev_set['id'][vdx])] < ev_set['minimumSOC'][vdx]].index
+            
+            if len(I1) == 0 and len(I2) == 0: continue
+            else:
+                fault.loc[f,'F_id'] = fdx
+
+                if len(I1) != 0 and len(I2) == 0:
+                    fault.loc[f,'idx'] = I1[0]
+                    amount = SoC_B['ev_{}'.format(ev_set['id'][vdx])][I1[0]] - ev_set['maximumSOC'][vdx] # unit: [%]
+                elif len(I1) == 0 and len(I2) != 0:
+                    fault.loc[f,'idx'] = I2[0]
+                    amount = -ev_set['minimumSOC'][vdx] - SoC_B['ev_{}'.format(ev_set['id'][vdx])][I2[0]] # unit: [%]
+                elif len(I1) != 0 and len(I2) != 0:
+                    if I1[0] < I2[0]:
+                        fault.loc[f,'idx'] = I1[0]
+                        amount = SoC_B['ev_{}'.format(ev_set['id'][vdx])][I1[0]] - ev_set['maximumSOC'][vdx] # unit: [%]
+                    else:
+                        fault.loc[f,'idx'] = I2[0]
+                        amount = -ev_set['minimumSOC'][vdx] - SoC_B['ev_{}'.format(ev_set['id'][vdx])][I2[0]] # unit: [%]
+
+                fault.loc[f,'amount'] = amount/100*ev_set['capacity'][vdx]
+                f += 1
+    fault_sorted =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
+    f = 0
+    for id in range(24):
+        id_idx = fault[fault['F_id']==id].index
+        idx_set = sorted(fault['idx'][id_idx].unique())
+        for ii in idx_set:
+            fault_sorted.loc[f,'F_id'] = id
+            fault_sorted.loc[f,'idx'] = ii
+            fault_sorted.loc[f,'amount'] = fault[(fault['F_id']==id) & (fault['idx']==ii)]['amount'].sum()
+            f += 1        
+
+    return fault_sorted
 
 def FCES(ev):
     arr_set = sorted(ev['serviceFrom'].unique().tolist())
@@ -77,6 +126,3 @@ def FCES(ev):
         fces_ts.loc[:int(fces_cluster['duration'][arr]-1),temp_header] = temp.to_numpy()
     
     return fces_ts, fces_cluster
-
-def Updater():
-    return 0
