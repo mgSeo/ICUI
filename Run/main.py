@@ -17,43 +17,6 @@ from Func import Func_pipeline as pipeline
 from Func import Func_ICUI as icui
 
 ev,cluster = pipeline.func(EV, step)
-icui.func(ev,obj)
-x = cbs.func(ev,cluster,obj)
+P_A, SoC_A, P_B, SoC_B = icui.func(ev,obj)
 
 ss=1
-
-
-## read data and make dataframe
-
-
-## parameter config ###########################################
-folder = '' # Choose folder
-path = './input/' + folder
-result_path = './result_pulp/'
-start_time = time.time()
-T = 96*2
-    
-###############################################################
-
-EV, D, CPC, Tou, Cost = pipeline(path,T)
-
-## Cluster-based-Massive Fleet Scheduler ######################
-import Cluster_based_scheduler as CBS
-step = 4
-cluster = CBS.def_cluster(EV,step)
-Batt_consider = 0
-CPC_consider = 0
-Fleet_schedule, EV_schedule = CBS.Scheduler(EV,cluster,D,T,Tou,Batt_consider,CPC['Cluster'],CPC_consider)
-Fleet_schedule.to_csv('./result_check/'+'CBS.csv')
-EV_schedule.to_csv('./result_check/'+'CBS_each.csv')
-
-## Arbitrage Fleet Scheduler ######################
-import Arbitrage as Arb
-Batt_consider = 0
-CPC_consider = 0
-Fleet_schedule, EV_schedule = Arb.Scheduler(EV,D,T,Tou,Cost,Batt_consider,CPC['Arb'],CPC_consider)
-Fleet_schedule.to_csv('./result_check/'+'arb.csv')
-# Cost <- Peak, Peak contracted power, Batt
-# test
-
-print("---{}s seconds---".format(time.time()-start_time))

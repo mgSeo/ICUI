@@ -20,64 +20,83 @@ def func(ev,w_obj):
     P_A,SoC_A = stage_A.func(fces_ts,fces_cluster,w_obj)
     P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
     tol = 2
+    header = ['F_id','idx','amount']
+    FAULT =  pd.DataFrame(columns=header)
+    iter = 0
+    len_prev = 0
+    len_currnet = 0
     while 1:
         # Check feasiblity
         if len(SoC_B[SoC_B > 92+tol]) == 0 and len(SoC_B[SoC_B< 8-tol]) == 0: break # Stage-A is feasible
 
         # Not Feasible.
         fault = Updater(SoC_B,fces_cluster,ev)
-        stage_A.updated()
+        fault = fault_arranger(fault)
+        FAULT = pd.concat([FAULT,fault])
+        
+        len_currnet = len(FAULT) - len_prev
+        P_A,SoC_A = stage_A.updated(fces_ts,fces_cluster,w_obj,FAULT,P_A)
         P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
+        
+        print('Iteration: {}, '.format(iter) + 'Len of Fault: {}'.format(len_currnet))
+        len_prev = len_currnet
+        iter += 1
+
     ## check tol
 
 
-    return 0
+    return P_A, SoC_A, P_B, SoC_B
 def Updater(SoC_B,fces_cluster,ev):
     header = ['F_id','idx','amount']
     fault =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
     f = 0
+    tol = 1
     for fdx in range(len(fces_cluster)):
         ev_set = ev[ev['serviceFrom']==fces_cluster['From'][fdx]]
         ev_set = ev_set.reset_index()
+
         for vdx in range(len(ev_set)):
-            # SoC_B['ev_{}'.format(ev_set['id'][vdx])]
-            # I1 = SoC_B[ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] > ev_set['maximumSOC'][vdx]].index
-            # I1 = SoC_B[ SoC_B.loc[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx],'ev_{}'.format(ev_set['id'][vdx])] > ev_set['maximumSOC'][vdx]].index
-            # I2 = SoC_B[ SoC_B.loc[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx],'ev_{}'.format(ev_set['id'][vdx])] < ev_set['minimumSOC'][vdx]].index
-            I1 = SoC_B[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]][ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] > ev_set['maximumSOC'][vdx]].index
-            I2 = SoC_B[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]][ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] < ev_set['minimumSOC'][vdx]].index
-            # I2 = SoC_B[ SoC_B.loc[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx],'ev_{}'.format(ev_set['id'][vdx])] < ev_set['minimumSOC'][vdx]].index
+            I1 = SoC_B[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]][ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] > ev_set['maximumSOC'][vdx] + tol].index
+            I2 = SoC_B[ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]][ SoC_B['ev_{}'.format(ev_set['id'][vdx])][ev_set['serviceFrom'][vdx]:ev_set['serviceTo'][vdx]] < ev_set['minimumSOC'][vdx] - tol].index
             
             if len(I1) == 0 and len(I2) == 0: continue
             else:
                 fault.loc[f,'F_id'] = fdx
 
                 if len(I1) != 0 and len(I2) == 0:
-                    fault.loc[f,'idx'] = I1[0]
+                    fault.loc[f,'idx'] = I1[0] - ev_set['serviceFrom'][vdx]
                     amount = SoC_B['ev_{}'.format(ev_set['id'][vdx])][I1[0]] - ev_set['maximumSOC'][vdx] # unit: [%]
                 elif len(I1) == 0 and len(I2) != 0:
-                    fault.loc[f,'idx'] = I2[0]
-                    amount = -ev_set['minimumSOC'][vdx] - SoC_B['ev_{}'.format(ev_set['id'][vdx])][I2[0]] # unit: [%]
+                    fault.loc[f,'idx'] = I2[0] - ev_set['serviceFrom'][vdx]
+                    amount = -(ev_set['minimumSOC'][vdx] - SoC_B['ev_{}'.format(ev_set['id'][vdx])][I2[0]]) # unit: [%]
                 elif len(I1) != 0 and len(I2) != 0:
                     if I1[0] < I2[0]:
-                        fault.loc[f,'idx'] = I1[0]
+                        fault.loc[f,'idx'] = I1[0] - ev_set['serviceFrom'][vdx]
                         amount = SoC_B['ev_{}'.format(ev_set['id'][vdx])][I1[0]] - ev_set['maximumSOC'][vdx] # unit: [%]
                     else:
-                        fault.loc[f,'idx'] = I2[0]
-                        amount = -ev_set['minimumSOC'][vdx] - SoC_B['ev_{}'.format(ev_set['id'][vdx])][I2[0]] # unit: [%]
+                        fault.loc[f,'idx'] = I2[0] - ev_set['serviceFrom'][vdx]
+                        amount = -(ev_set['minimumSOC'][vdx] - SoC_B['ev_{}'.format(ev_set['id'][vdx])][I2[0]]) # unit: [%]
 
                 fault.loc[f,'amount'] = amount/100*ev_set['capacity'][vdx]
                 f += 1
+    
+    return fault
+
+def fault_arranger(fault):
+    header = ['F_id','idx','amount']
     fault_sorted =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
     f = 0
     for id in range(24):
         id_idx = fault[fault['F_id']==id].index
         idx_set = sorted(fault['idx'][id_idx].unique())
-        for ii in idx_set:
+        for ii in idx_set[0:1]:
             fault_sorted.loc[f,'F_id'] = id
             fault_sorted.loc[f,'idx'] = ii
             fault_sorted.loc[f,'amount'] = fault[(fault['F_id']==id) & (fault['idx']==ii)]['amount'].sum()
-            f += 1        
+            f += 1
+    
+    idx = fault_sorted[abs(fault_sorted['amount']) < 0.01].index
+    fault_sorted.drop(idx,inplace=True)
 
     return fault_sorted
 
