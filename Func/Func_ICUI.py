@@ -3,23 +3,12 @@ from Func import Func_Stage_B as stage_B
 
 import pandas as pd
 import numpy as np
-# import math
-# import warnings
-# warnings.filterwarnings('ignore')
-# from gettext import find
-# import imp
-# from operator import index
-# from re import L
-# from unittest import result
-# from pulp import *
-# from pyparsing import col
 
-def func(ev,w_obj):
-    fces_ts, fces_cluster = FCES(ev)
+def func(ev,w_obj,tol):
+    fces_ts, fces_cluster = FCES(ev,tol)
 
     P_A,SoC_A = stage_A.func(fces_ts,fces_cluster,w_obj)
-    P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
-    tol = 2
+    P_B,SoC_B,Fault = stage_B.func(P_A,fces_cluster,ev,tol)
     header = ['F_id','idx','amount']
     FAULT =  pd.DataFrame(columns=header)
     iter = 0
@@ -100,7 +89,7 @@ def fault_arranger(fault):
 
     return fault_sorted
 
-def FCES(ev):
+def FCES(ev,tol):
     arr_set = sorted(ev['serviceFrom'].unique().tolist())
     # def DataFrame
     time_series_list = ['demand', 'pcs', 'minimumSOC','capacity']
@@ -126,7 +115,7 @@ def FCES(ev):
         fces_cluster.loc[arr,'duration'] = fces_cluster['To'][arr] - fces_cluster['From'][arr] + 1
         fces_cluster.loc[arr,'n_ev'] = len(idx)
         fces_cluster.loc[arr,'capacity'] = ev['capacity'][idx].sum()
-        fces_cluster.loc[arr,'maximumSOC'] = sum(ev['maximumSOC'][idx]/100*ev['capacity'][idx])
+        fces_cluster.loc[arr,'maximumSOC'] = sum((ev['maximumSOC'][idx]-tol)/100*ev['capacity'][idx])
 
     # def Value of Dataframe, time-series(ts)
     for arr in range(len(arr_set)):
@@ -137,7 +126,7 @@ def FCES(ev):
             lists = ['capacity','pcs']
             for l in lists:
                 temp.loc[:ev['duration'][vdx]-1,l] += ev[l][vdx]
-            temp.loc[ev['duration'][vdx]-1:,'minimumSOC'] += ev['minimumSOC'][vdx]/100 * ev['capacity'][vdx]
+            temp.loc[ev['duration'][vdx]-1:,'minimumSOC'] += (ev['minimumSOC'][vdx]+tol)/100 * ev['capacity'][vdx]
             temp.loc[ev['duration'][vdx]-1:,'demand'] += ev['goalSOC'][vdx]/100 * ev['capacity'][vdx]
         temp_header = []
         for l in time_series_list:
