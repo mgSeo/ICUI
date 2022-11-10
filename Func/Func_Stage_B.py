@@ -37,7 +37,7 @@ def dispatch(P_A,ev):
     ### Define varable:
     B = gp.Model('Stage-B')
     B.Params.LogToConsole = 0
-    p = [B.addVars(range(int(ev.duration[vdx])), ub=ev['pcs'][vdx], lb=-ev['pcs'][vdx]) for vdx in range(len(ev))] # EV Power {vdx,t}
+    p = [B.addVars(range(ev.duration[vdx]), ub=ev['pcs'][vdx], lb=-ev['pcs'][vdx]) for vdx in range(len(ev))] # EV Power {vdx,t}
     goalSoC = B.addVars(range(len(ev)), lb=0)
     
     relax_param = 1 # non-relaxed
@@ -57,7 +57,7 @@ def dispatch_relaxed(P_A,ev,fdx,tol):
     ### Define varable:
     B_relaxed = gp.Model('Stage-B')
     B_relaxed.Params.LogToConsole = 0
-    p = [B_relaxed.addVars(range(int(ev.duration[vdx])), ub=ev['pcs'][vdx], lb=-ev['pcs'][vdx]) for vdx in range(len(ev))] # EV Power {vdx,t}
+    p = [B_relaxed.addVars(range(ev.duration[vdx]), ub=ev['pcs'][vdx], lb=-ev['pcs'][vdx]) for vdx in range(len(ev))] # EV Power {vdx,t}
     goalSoC = B_relaxed.addVars(range(len(ev)), lb=0)
     
     relax_param = 0 # relaxed
@@ -73,7 +73,7 @@ def dispatch_relaxed(P_A,ev,fdx,tol):
             return 0, 0, B_relaxed.SolCount, updated_error
         
         P_b,SoC_b = fault_arranger.B(p,ev)
-        SoC_b.to_csv('soc_b_iter_{}.csv'.format(iter))
+        # SoC_b.to_csv('soc_b_iter_{}.csv'.format(iter))
 
         if len(SoC_b[SoC_b > 92+tol]) == 0 and len(SoC_b[SoC_b< 8-tol]) == 0:
             return P_b, SoC_b, B_relaxed.SolCount, 0
@@ -83,25 +83,6 @@ def dispatch_relaxed(P_A,ev,fdx,tol):
         B_relaxed, updated_error = violation_updator(B_relaxed,p,ev,P_b,SoC_b,fdx,tol)
         
         iter += 1
-
-
-    for vdx in range(len(ev)):
-        soe = ev['initialSOC'][vdx]/100*ev['capacity'][vdx]
-        for idx in range(ev['duration'][vdx]):
-            # SoE upper & lower bound
-            soe += p[vdx][idx]
-            B_relaxed.addConstr(soe >= ev.minimumSOC[vdx]/100*ev['capacity'][vdx])
-            B_relaxed.addConstr(soe <= ev.maximumSOC[vdx]/100*ev['capacity'][vdx])
-            B_relaxed.optimize()
-            if B_relaxed.SolCount == 0:
-                c = B_relaxed.getConstrs()
-                B_relaxed.remove(c[-1]) # remove previous constraint
-                B_relaxed.remove(c[-2])
-                B_relaxed.update()
-                break
-    B_relaxed.optimize()
-    EV_P,SoC = arranger.B(p,ev)
-    return EV_P, SoC
 
 def objective_function(B,goalSoC,ev):
     # goal SoC
@@ -124,8 +105,6 @@ def constraints(B,p,goalSoC,P_A,ev,relax_param):
                 temp = 1
         if temp == 1: 
             B.addConstr(X == P_A[t])
-            # B.addConstr(P_A[t] - X >= 0)
-            # B.addConstr(P_A[t] - X <= 0)
     
     # Goal SoE
     for vdx in range(len(ev)):
@@ -174,17 +153,12 @@ def violation_updator(B_relaxed,p,ev,P_b,SoC_b,fdx,tol):
                     fault.loc[f,'idx'] = I2[0] - ev['serviceFrom'][vdx]
                     amount = -(ev['minimumSOC'][vdx] - SoC_b['ev_{}'.format(ev['id'][vdx])][I2[0]]) # unit: [%]
             fault.loc[f,'amount'] = amount/100*ev['capacity'][vdx]
-
             f += 1
+
     # 1 set 만 제외하고 나머지는 날려야함.
     idx_set = fault[fault['idx'] == fault['idx'].min()]
     idx_set = idx_set.reset_index()
     idx_set = idx_set.loc[0]
-    # idx_set = idx_set.reset_index()
-    # len_set = len(idx_set)
-    # for l in range(1,len_set):
-    #     idx_set = idx_set.drop(l, axis=0)
-    #     idx_set = idx_set.reset_index()
 
     # update constraint
     vdx = int(idx_set['V_id'])
@@ -197,5 +171,5 @@ def violation_updator(B_relaxed,p,ev,P_b,SoC_b,fdx,tol):
     else:
         B_relaxed.addConstr(cum_p >= pre_p - idx_set['amount'])
 
-    # idx_set == previously updated error
+    # idx_set: previously updated error
     return B_relaxed, idx_set

@@ -8,7 +8,28 @@ def func(ev,w_obj,tol):
     fces_ts, fces_cluster = FCES(ev,tol)
 
     P_A,SoC_A = stage_A.func(fces_ts,fces_cluster,w_obj)
-    P_B,SoC_B,Fault = stage_B.func(P_A,fces_cluster,ev,tol)
+    header = ['F_id','V_id','idx','amount']
+    Fault =  pd.DataFrame(columns=header)
+    iter = 0
+    while 1:
+        P_B,SoC_B,fault = stage_B.func(P_A,fces_cluster,ev,tol)
+        fault.to_csv('Fault_{}.csv'.format(iter))
+        ## Check feasiblity
+        if len(fault) == 0: # means solution is feasible
+            ss = 1
+            break
+        ## solution is Infeasible
+        # Update Stage-A
+        Fault = pd.concat([Fault,fault])
+        Fault = fault_arranger(Fault)
+        P_A,SoC_A = stage_A.updated(fces_ts,fces_cluster,w_obj,Fault,P_A)
+        
+        print('Iteration: {}, '.format(iter) + 'Total Number of Fault: {}, '.format(len(Fault)) + 'Increased: {}'.format(len(fault)))
+        iter += 1
+
+
+
+
     header = ['F_id','idx','amount']
     FAULT =  pd.DataFrame(columns=header)
     iter = 0
@@ -16,8 +37,10 @@ def func(ev,w_obj,tol):
     len_currnet = 0
     while 1:
         # Check feasiblity
-        if len(SoC_B[SoC_B > 92+tol]) == 0 and len(SoC_B[SoC_B< 8-tol]) == 0: break # Stage-A is feasible
-
+        if len(SoC_B[SoC_B > 92+tol]) == 0 and len(SoC_B[SoC_B< 8-tol]) == 0:
+            ss=1
+            break # Stage-A is feasible
+            
         # Not Feasible.
         fault = Updater(SoC_B,fces_cluster,ev)
         fault = fault_arranger(fault)
@@ -72,16 +95,17 @@ def Updater(SoC_B,fces_cluster,ev):
     return fault
 
 def fault_arranger(fault):
-    header = ['F_id','idx','amount']
+    header = ['F_id','V_id','idx','amount']
     fault_sorted =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
     f = 0
-    for id in range(24):
-        id_idx = fault[fault['F_id']==id].index
+    for fdx in fault['F_id']:
+        id_idx = fault[fault['F_id']==fdx].index
         idx_set = sorted(fault['idx'][id_idx].unique())
-        for ii in idx_set[0:1]:
-            fault_sorted.loc[f,'F_id'] = id
+        for ii in idx_set:
+            fault_sorted.loc[f,'F_id'] = fdx
+            fault_sorted.loc[f,'V_id'] = 0
             fault_sorted.loc[f,'idx'] = ii
-            fault_sorted.loc[f,'amount'] = fault[(fault['F_id']==id) & (fault['idx']==ii)]['amount'].sum()
+            fault_sorted.loc[f,'amount'] = fault[(fault['F_id']==fdx) & (fault['idx']==ii)]['amount'].sum()
             f += 1
     
     idx = fault_sorted[abs(fault_sorted['amount']) < 0.01].index
@@ -133,4 +157,6 @@ def FCES(ev,tol):
             temp_header.append('arr_{}_'.format(arr)+l)
         fces_ts.loc[:int(fces_cluster['duration'][arr]-1),temp_header] = temp.to_numpy()
     
+    header = ['From', 'To','duration','n_ev']
+    fces_cluster[header] = fces_cluster[header].astype('int')
     return fces_ts, fces_cluster

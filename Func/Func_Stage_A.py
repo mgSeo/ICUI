@@ -6,12 +6,12 @@ def func(fces_ts,fces_cluster,w_obj):
     A = gp.Model('Stage-A')
     A.Params.LogToConsole = 0
     # ev Power {vdx,m,t}
-    p = [A.addVars(range(int(fces_cluster.duration[vdx]))) for vdx in range(len(fces_cluster))]
+    p = [A.addVars(range(fces_cluster.duration[vdx])) for vdx in range(len(fces_cluster))]
     # ev goal soc
     # goalsoc_ev = model.addVars(range(len(ev)), lb=0)
     
     for vdx in range(len(fces_cluster)):
-        for idx in range(int(fces_cluster['duration'][vdx])):
+        for idx in range(fces_cluster['duration'][vdx]):
             p[vdx][idx].ub = fces_ts['arr_{}_pcs'.format(vdx)][idx]
             p[vdx][idx].lb = -fces_ts['arr_{}_pcs'.format(vdx)][idx]
 
@@ -40,7 +40,7 @@ def constraints(A,p,fces_ts,fces_cluster):
     # SoC boundaries
     for vdx in range(len(fces_cluster)):
         soe = fces_cluster['initialSOC'][vdx] 
-        for idx in range(int(fces_cluster['duration'][vdx])):
+        for idx in range(fces_cluster['duration'][vdx]):
             soe += p[vdx][idx]
             A.addConstr(soe <= fces_cluster['maximumSOC'][vdx])
             A.addConstr(soe >= fces_ts['arr_{}_minimumSOC'.format(vdx)][idx])
@@ -56,43 +56,44 @@ def constraints(A,p,fces_ts,fces_cluster):
 
     return A
 
-def updated(fces_ts,fces_cluster,w_obj,fault,preP_A):
+def updated(fces_ts,fces_cluster,w_obj,fault,P_A):
     updated_A = gp.Model('Stage-A')
     updated_A.Params.LogToConsole = 0
     # ev Power {vdx,m,t}
-    p = [updated_A.addVars(range(int(fces_cluster.duration[vdx]))) for vdx in range(len(fces_cluster))]
-    # ev goal soc
-    # goalsoc_ev = model.addVars(range(len(ev)), lb=0)
-    
-    for vdx in range(len(fces_cluster)):
-        for idx in range(int(fces_cluster['duration'][vdx])):
+    p = [updated_A.addVars(range(fces_cluster.duration[vdx])) for vdx in range(len(fces_cluster))]
+
+    for vdx in range(len(fces_cluster)): # upper and lower bound
+        for idx in range(fces_cluster['duration'][vdx]):
             p[vdx][idx].ub = fces_ts['arr_{}_pcs'.format(vdx)][idx]
             p[vdx][idx].lb = -fces_ts['arr_{}_pcs'.format(vdx)][idx]
 
     updated_A = constraints(updated_A,p,fces_ts,fces_cluster)
-    updated_A = constraint_update(updated_A,p,fces_ts,fces_cluster,fault,preP_A)
+    updated_A = constraint_update(updated_A,p,fces_ts,fces_cluster,fault,P_A)
     updated_A.ModelSense = GRB.MINIMIZE
     updated_A = objective_function(updated_A,w_obj,p,fces_ts,fces_cluster)   
     updated_A.optimize()
-
-    P_A, SoC_A = arranger.A(p,fces_ts,fces_cluster)
+    try:
+        P_A, SoC_A = arranger.A(p,fces_ts,fces_cluster)
+    except:
+        fault.to_csv('error_fault.csv')
+        P_A.to_csv('error_P_A.csv')
+        fces_ts.to_csv('error_FCES_ts.csv')
+        fces_cluster.to_csv('error_FCES_cluster.csv')
+        ss=1
     return P_A, SoC_A
 
-def constraint_update(updated_A,p,fces_ts,fces_cluster,fault,preP_A):
-    # Strengthens
-    for fdx in range(len(fces_cluster)):
-    # for fdx in range(15):
-        # if fdx == 15: continue
-        fault_set = fault[fault['F_id']==fdx]
-        fault_set = fault_set.reset_index()
+def constraint_update(updated_A,p,fces_ts,fces_cluster,fault,P_A):
+    header = ['F_id','V_id','idx']
+    fault[header] = fault[header].astype('int') # float -> int
 
-        for f in range(len(fault_set)):
-            IDX = int(fault_set['idx'][f] + 1)
-            cum_p = sum([p[fdx][idx] for idx in range(IDX)])
-            if fault_set['amount'][f] > 0:
-                updated_A.addConstr(cum_p <= preP_A['arr_{}'.format(fdx)][:int(IDX+fces_cluster['From'][fdx])].sum() - fault_set['amount'][f])
-            elif fault_set['amount'][f] < 0:
-                updated_A.addConstr(cum_p >= preP_A['arr_{}'.format(fdx)][:int(IDX+fces_cluster['From'][fdx])].sum() - fault_set['amount'][f])
+    for fdx in fault['F_id'][:7]:
+        cum_p = sum([p[fdx][idx] for idx in range(fault['idx'][fdx]+1)])
+        intime = fces_cluster['From'][fdx]
+        pre_p = P_A['arr_{}'.format(fdx)][intime:intime+fault['idx'][fdx]+1].sum()
+
+        if fault['amount'][fdx] >= 0:
+            updated_A.addConstr(cum_p <= pre_p - fault['amount'][fdx])
+        else:
+            updated_A.addConstr(cum_p >= pre_p - fault['amount'][fdx])
 
     return updated_A
-    # preP_A['arr_{}'.format(vdx)]
