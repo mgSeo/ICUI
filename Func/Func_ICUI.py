@@ -3,48 +3,32 @@ from Func import Func_Stage_B as stage_B
 
 import pandas as pd
 import numpy as np
-# import math
-# import warnings
-# warnings.filterwarnings('ignore')
-# from gettext import find
-# import imp
-# from operator import index
-# from re import L
-# from unittest import result
-# from pulp import *
-# from pyparsing import col
 
-def func(ev,w_obj):
-    fces_ts, fces_cluster = FCES(ev)
+def func(ev,w_obj,tol):
+    fces_ts, fces_cluster = FCES(ev,tol)
 
     P_A,SoC_A = stage_A.func(fces_ts,fces_cluster,w_obj)
-    P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
-    tol = 2
-    header = ['F_id','idx','amount']
-    FAULT =  pd.DataFrame(columns=header)
+    header = ['F_id','V_id','idx','amount']
+    Fault =  pd.DataFrame(columns=header)
     iter = 0
-    len_prev = 0
-    len_currnet = 0
     while 1:
-        # Check feasiblity
-        if len(SoC_B[SoC_B > 92+tol]) == 0 and len(SoC_B[SoC_B< 8-tol]) == 0: break # Stage-A is feasible
-
-        # Not Feasible.
-        fault = Updater(SoC_B,fces_cluster,ev)
-        fault = fault_arranger(fault)
-        FAULT = pd.concat([FAULT,fault])
+        P_B,SoC_B,fault = stage_B.func(P_A,fces_cluster,ev,tol)
+        fault.to_csv('Fault_{}.csv'.format(iter))
+        ## Check feasiblity
+        if len(fault) == 0: # means solution is feasible
+            ss = 1
+            break
+        ## solution is Infeasible
+        # Update Stage-A
+        Fault = pd.concat([Fault,fault])
+        Fault = Fault.reset_index()
+        Fault = Fault.drop(['index'], axis=1)
+        Fault = fault_arranger(Fault)
+        P_A,SoC_A = stage_A.updated(fces_ts,fces_cluster,w_obj,Fault,P_A)
         
-        len_currnet = len(FAULT) - len_prev
-        P_A,SoC_A = stage_A.updated(fces_ts,fces_cluster,w_obj,FAULT,P_A)
-        P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
-        
-        print('Iteration: {}, '.format(iter) + 'Len of Fault: {}'.format(len_currnet))
-        len_prev = len_currnet
+        print('Iteration: {}, '.format(iter) + 'Total Number of Fault: {}, '.format(len(Fault)) + 'Increased: {}'.format(len(fault)))
         iter += 1
-
-    ## check tol
-
-
+        
     return P_A, SoC_A, P_B, SoC_B
 def Updater(SoC_B,fces_cluster,ev):
     header = ['F_id','idx','amount']
@@ -83,24 +67,27 @@ def Updater(SoC_B,fces_cluster,ev):
     return fault
 
 def fault_arranger(fault):
-    header = ['F_id','idx','amount']
+    header = ['F_id','V_id','idx','amount']
     fault_sorted =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
     f = 0
-    for id in range(24):
-        id_idx = fault[fault['F_id']==id].index
-        idx_set = sorted(fault['idx'][id_idx].unique())
-        for ii in idx_set[0:1]:
-            fault_sorted.loc[f,'F_id'] = id
+    F_id_set = sorted(fault['F_id'].unique())
+    for fdx in F_id_set:
+        fault_set = fault[fault['F_id']==fdx]
+        # fault_set = fault_set.reset_index()
+        idx_set = sorted(fault_set['idx'].unique())
+        for ii in idx_set:
+            fault_sorted.loc[f,'F_id'] = fdx
+            fault_sorted.loc[f,'V_id'] = 0
             fault_sorted.loc[f,'idx'] = ii
-            fault_sorted.loc[f,'amount'] = fault[(fault['F_id']==id) & (fault['idx']==ii)]['amount'].sum()
+            amount_idx = fault_set[fault_set['idx'] == ii].index
+            fault_sorted.loc[f,'amount'] = fault_set['amount'][amount_idx].sum()
             f += 1
-    
-    idx = fault_sorted[abs(fault_sorted['amount']) < 0.01].index
-    fault_sorted.drop(idx,inplace=True)
+
+    fault_sorted[['F_id','idx']] = fault_sorted[['F_id','idx']].astype('int')
 
     return fault_sorted
 
-def FCES(ev):
+def FCES(ev,tol):
     arr_set = sorted(ev['serviceFrom'].unique().tolist())
     # def DataFrame
     time_series_list = ['demand', 'pcs', 'minimumSOC','capacity']
@@ -126,7 +113,7 @@ def FCES(ev):
         fces_cluster.loc[arr,'duration'] = fces_cluster['To'][arr] - fces_cluster['From'][arr] + 1
         fces_cluster.loc[arr,'n_ev'] = len(idx)
         fces_cluster.loc[arr,'capacity'] = ev['capacity'][idx].sum()
-        fces_cluster.loc[arr,'maximumSOC'] = sum(ev['maximumSOC'][idx]/100*ev['capacity'][idx])
+        fces_cluster.loc[arr,'maximumSOC'] = sum((ev['maximumSOC'][idx]-tol)/100*ev['capacity'][idx])
 
     # def Value of Dataframe, time-series(ts)
     for arr in range(len(arr_set)):
@@ -137,11 +124,13 @@ def FCES(ev):
             lists = ['capacity','pcs']
             for l in lists:
                 temp.loc[:ev['duration'][vdx]-1,l] += ev[l][vdx]
-            temp.loc[ev['duration'][vdx]-1:,'minimumSOC'] += ev['minimumSOC'][vdx]/100 * ev['capacity'][vdx]
+            temp.loc[ev['duration'][vdx]-1:,'minimumSOC'] += (ev['minimumSOC'][vdx]+tol)/100 * ev['capacity'][vdx]
             temp.loc[ev['duration'][vdx]-1:,'demand'] += ev['goalSOC'][vdx]/100 * ev['capacity'][vdx]
         temp_header = []
         for l in time_series_list:
             temp_header.append('arr_{}_'.format(arr)+l)
         fces_ts.loc[:int(fces_cluster['duration'][arr]-1),temp_header] = temp.to_numpy()
     
+    header = ['From', 'To','duration','n_ev']
+    fces_cluster[header] = fces_cluster[header].astype('int')
     return fces_ts, fces_cluster

@@ -55,5 +55,7 @@ def func(ev, step):
     
     
     cluster['duration'] = cluster.To - cluster.From + 1 # cluster's duration
+    header = ['serviceFrom','serviceTo','duration']
+    ev[header] = ev[header].astype('int')
 
     return ev,cluster
