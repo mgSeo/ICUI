@@ -46,13 +46,13 @@ def constraints(A,p,fces_ts,fces_cluster):
             A.addConstr(soe >= fces_ts['arr_{}_minimumSOC'.format(vdx)][idx])
 
     # Demand Curve ∋ Goal-SoC
-    for vdx in range(len(fces_cluster)):
-        demand_set = fces_ts['arr_{}_demand'.format(vdx)].unique()
-        # for d in range(1,len(demand_set)):
-        for d in range(1,2):
-            point = fces_ts[fces_ts['arr_{}_demand'.format(vdx)] == demand_set[d]].index[0]
-            soe = fces_cluster['initialSOC'][vdx] + sum([p[vdx][idx] for idx in range(point+1)])
-            A.addConstr(soe >= demand_set[d])
+    # for vdx in range(len(fces_cluster)):
+    #     demand_set = fces_ts['arr_{}_demand'.format(vdx)].unique()
+    #     # for d in range(1,len(demand_set)):
+    #     for d in range(1,2):
+    #         point = fces_ts[fces_ts['arr_{}_demand'.format(vdx)] == demand_set[d]].index[0]
+    #         soe = fces_cluster['initialSOC'][vdx] + sum([p[vdx][idx] for idx in range(point+1)])
+    #         A.addConstr(soe >= demand_set[d])
 
     return A
 
@@ -83,17 +83,17 @@ def updated(fces_ts,fces_cluster,w_obj,fault,P_A):
     return P_A, SoC_A
 
 def constraint_update(updated_A,p,fces_ts,fces_cluster,fault,P_A):
-    header = ['F_id','V_id','idx']
-    fault[header] = fault[header].astype('int') # float -> int
+    for f in range(len(fault)):
+        F_id = fault['F_id'][f]
+        IDX = fault['idx'][f]
 
-    for fdx in fault['F_id'][:7]:
-        cum_p = sum([p[fdx][idx] for idx in range(fault['idx'][fdx]+1)])
-        intime = fces_cluster['From'][fdx]
-        pre_p = P_A['arr_{}'.format(fdx)][intime:intime+fault['idx'][fdx]+1].sum()
+        cum_p = sum([p[F_id][idx] for idx in range(IDX+1)])
+        intime = fces_cluster['From'][F_id]
+        pre_p = P_A['arr_{}'.format(F_id)][intime : intime+IDX+1].sum()
 
-        if fault['amount'][fdx] >= 0:
-            updated_A.addConstr(cum_p <= pre_p - fault['amount'][fdx])
+        if fault['amount'][f] >= 0:
+            updated_A.addConstr(cum_p <= pre_p - fault['amount'][f])
         else:
-            updated_A.addConstr(cum_p >= pre_p - fault['amount'][fdx])
+            updated_A.addConstr(cum_p >= pre_p - fault['amount'][f])
 
     return updated_A

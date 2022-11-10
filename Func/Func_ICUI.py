@@ -21,42 +21,14 @@ def func(ev,w_obj,tol):
         ## solution is Infeasible
         # Update Stage-A
         Fault = pd.concat([Fault,fault])
+        Fault = Fault.reset_index()
+        Fault = Fault.drop(['index'], axis=1)
         Fault = fault_arranger(Fault)
         P_A,SoC_A = stage_A.updated(fces_ts,fces_cluster,w_obj,Fault,P_A)
         
         print('Iteration: {}, '.format(iter) + 'Total Number of Fault: {}, '.format(len(Fault)) + 'Increased: {}'.format(len(fault)))
         iter += 1
-
-
-
-
-    header = ['F_id','idx','amount']
-    FAULT =  pd.DataFrame(columns=header)
-    iter = 0
-    len_prev = 0
-    len_currnet = 0
-    while 1:
-        # Check feasiblity
-        if len(SoC_B[SoC_B > 92+tol]) == 0 and len(SoC_B[SoC_B< 8-tol]) == 0:
-            ss=1
-            break # Stage-A is feasible
-            
-        # Not Feasible.
-        fault = Updater(SoC_B,fces_cluster,ev)
-        fault = fault_arranger(fault)
-        FAULT = pd.concat([FAULT,fault])
         
-        len_currnet = len(FAULT) - len_prev
-        P_A,SoC_A = stage_A.updated(fces_ts,fces_cluster,w_obj,FAULT,P_A)
-        P_B,SoC_B = stage_B.func(P_A,fces_cluster,ev)
-        
-        print('Iteration: {}, '.format(iter) + 'Len of Fault: {}'.format(len_currnet))
-        len_prev = len_currnet
-        iter += 1
-
-    ## check tol
-
-
     return P_A, SoC_A, P_B, SoC_B
 def Updater(SoC_B,fces_cluster,ev):
     header = ['F_id','idx','amount']
@@ -98,18 +70,20 @@ def fault_arranger(fault):
     header = ['F_id','V_id','idx','amount']
     fault_sorted =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
     f = 0
-    for fdx in fault['F_id']:
-        id_idx = fault[fault['F_id']==fdx].index
-        idx_set = sorted(fault['idx'][id_idx].unique())
+    F_id_set = sorted(fault['F_id'].unique())
+    for fdx in F_id_set:
+        fault_set = fault[fault['F_id']==fdx]
+        # fault_set = fault_set.reset_index()
+        idx_set = sorted(fault_set['idx'].unique())
         for ii in idx_set:
             fault_sorted.loc[f,'F_id'] = fdx
             fault_sorted.loc[f,'V_id'] = 0
             fault_sorted.loc[f,'idx'] = ii
-            fault_sorted.loc[f,'amount'] = fault[(fault['F_id']==fdx) & (fault['idx']==ii)]['amount'].sum()
+            amount_idx = fault_set[fault_set['idx'] == ii].index
+            fault_sorted.loc[f,'amount'] = fault_set['amount'][amount_idx].sum()
             f += 1
-    
-    idx = fault_sorted[abs(fault_sorted['amount']) < 0.01].index
-    fault_sorted.drop(idx,inplace=True)
+
+    fault_sorted[['F_id','idx']] = fault_sorted[['F_id','idx']].astype('int')
 
     return fault_sorted
 
