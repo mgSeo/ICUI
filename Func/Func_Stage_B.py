@@ -13,22 +13,26 @@ def func(P_A,fces_cluster,ev,tol):
     SoC = pd.DataFrame()
     header = ['F_id','V_id','idx','amount']
     Fault =  pd.DataFrame(np.zeros([1,len(header)]),columns=header)
+    f = 0
     for fdx in range(len(arr_set)):
+        if fdx == 20:
+            ss= 1
         arr = arr_set[fdx]
-
         ev_set = ev[ev['serviceFrom']==arr]
         P_A_set = P_A['arr_{}'.format(fdx)]
         SolCount,P_b,soc = dispatch(P_A_set,ev_set)
         if SolCount == 0:
-            Fault.loc[fdx,'F_id'] = fdx
             P_b, soc, solcount, fault = dispatch_relaxed(P_A_set,ev_set,fdx,tol)
             if solcount == 0:
                 for h in header[1:]:
-                    Fault.loc[fdx,h] = fault[h]
+                    Fault.loc[f,'F_id'] = fdx
+                    Fault.loc[f,h] = fault[h]
+                f += 1
                 continue
 
         P_B = pd.concat([P_B,P_b],axis=1)
         SoC = pd.concat([SoC,soc],axis=1)
+
     return P_B,SoC,Fault
 
 
@@ -75,14 +79,14 @@ def dispatch_relaxed(P_A,ev,fdx,tol):
         P_b,SoC_b = fault_arranger.B(p,ev)
         # SoC_b.to_csv('soc_b_iter_{}.csv'.format(iter))
 
-        if len(SoC_b[SoC_b > 92+tol]) == 0 and len(SoC_b[SoC_b< 8-tol]) == 0:
+        if sum(SoC_b[SoC_b > 92+tol*2].count()) == 0 and sum(SoC_b[SoC_b < 8-tol*2].count()) == 0:
             P_b,SoC_b = arranger.B(p,ev)
             return P_b, SoC_b, B_relaxed.SolCount, 0
         
         # In-feasible
         B_relaxed.reset() # Reset the model to an unsolved state, discarding any previously computed solution information.
         B_relaxed, updated_error = violation_updator(B_relaxed,p,ev,P_b,SoC_b,fdx,tol)
-        
+        SoC_b.to_csv('SoC_b_{}.csv'.format(iter))
         iter += 1
 
 def objective_function(B,goalSoC,ev):

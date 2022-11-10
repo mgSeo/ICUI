@@ -33,7 +33,13 @@ def objective_function(A,w_obj,p,fces_ts,fces_cluster):
                 idx = t - fces_cluster['From'][fdx]
                 X += p[fdx][idx]
         obj_smp += X * w_obj[0][t]
-    A.setObjective(obj_smp)
+    # A.setObjective(obj_smp)
+
+    obj_sample = 0
+    for fdx in range(len(fces_cluster)):
+        for idx in range(fces_cluster['duration'][fdx]):
+            obj_sample -= p[fdx][idx]
+    A.setObjective(obj_sample)
     return A
 
 def constraints(A,p,fces_ts,fces_cluster):
