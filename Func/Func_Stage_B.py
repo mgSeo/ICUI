@@ -76,6 +76,7 @@ def dispatch_relaxed(P_A,ev,fdx,tol):
         # SoC_b.to_csv('soc_b_iter_{}.csv'.format(iter))
 
         if len(SoC_b[SoC_b > 92+tol]) == 0 and len(SoC_b[SoC_b< 8-tol]) == 0:
+            P_b,SoC_b = arranger.B(p,ev)
             return P_b, SoC_b, B_relaxed.SolCount, 0
         
         # In-feasible

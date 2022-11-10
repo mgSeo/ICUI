@@ -89,18 +89,7 @@ def fault_arranger(fault):
 
 def FCES(ev,tol):
     arr_set = sorted(ev['serviceFrom'].unique().tolist())
-    # def DataFrame
-    time_series_list = ['demand', 'pcs', 'minimumSOC','capacity']
-    header = []
-    dur = 0
-    for arr in range(len(arr_set)):
-        for l in time_series_list:
-            header.append('arr_{}_'.format(arr) + l)
-        idx = ev[ev['serviceFrom']==arr_set[0]].index
-        if ev['serviceTo'][idx].max()-arr_set[0] + 1 > dur:
-            dur = ev['serviceTo'][idx].max()-arr_set[0] + 1
-    fces_ts = pd.DataFrame(np.zeros([dur,len(header)]),columns=header)
-
+    ## Cluster
     cluster_header = ['From', 'To','initialSOC','eff','duration','n_ev','capacity']
     fces_cluster = pd.DataFrame(np.zeros([len(arr_set), len(cluster_header)]),columns=cluster_header)
     # def Value of Dataframe, cluster
@@ -108,29 +97,36 @@ def FCES(ev,tol):
         idx = ev[ev['serviceFrom']==arr_set[arr]].index
         fces_cluster.loc[arr,'From'] = arr_set[arr]
         fces_cluster.loc[arr,'To'] = ev['serviceTo'][idx].max()
-        fces_cluster.loc[arr,'initialSOC'] = sum(ev['initialSOC'][idx] * ev['capacity'][idx] / 100)
-        fces_cluster.loc[arr,'eff'] = ev['eff'][idx].mean()        
+        fces_cluster.loc[arr,'initialSOC'] = sum(ev['initialSOC'][idx] / 100 * ev['capacity'][idx])
+        fces_cluster.loc[arr,'eff'] = ev['eff'][idx].mean()
         fces_cluster.loc[arr,'duration'] = fces_cluster['To'][arr] - fces_cluster['From'][arr] + 1
         fces_cluster.loc[arr,'n_ev'] = len(idx)
         fces_cluster.loc[arr,'capacity'] = ev['capacity'][idx].sum()
         fces_cluster.loc[arr,'maximumSOC'] = sum((ev['maximumSOC'][idx]-tol)/100*ev['capacity'][idx])
+    header = ['From', 'To','duration','n_ev']
+    fces_cluster[header] = fces_cluster[header].astype('int')
 
-    # def Value of Dataframe, time-series(ts)
+    ## Time-series Cluster
+    time_series_list = ['pcs', 'minimumSOC','capacity']
+    header = []
+    for arr in range(len(arr_set)):
+        for l in time_series_list:
+            header.append('arr_{}_'.format(arr) + l)
+    #     idx = ev[ev['serviceFrom']==arr_set[0]].index
+        # if ev['serviceTo'][idx].max()-arr_set[0] + 1 > dur:
+        #     dur = ev['serviceTo'][idx].max()-arr_set[0] + 1
+    fces_ts = pd.DataFrame(np.zeros([ev['duration'].max(),len(header)]),columns=header)
+
     for arr in range(len(arr_set)):
         idx = ev[ev['serviceFrom']==arr_set[arr]].index
-        temp = pd.DataFrame(np.zeros([int(fces_cluster['duration'][arr]),len(time_series_list)]),columns=time_series_list)
-        for v in range(int(fces_cluster['n_ev'][arr])):
+        # temp = pd.DataFrame(np.zeros([int(fces_cluster['duration'][arr]),len(time_series_list)]),columns=time_series_list)
+        for v in range(fces_cluster['n_ev'][arr]):
             vdx = idx[v]
             lists = ['capacity','pcs']
             for l in lists:
-                temp.loc[:ev['duration'][vdx]-1,l] += ev[l][vdx]
-            temp.loc[ev['duration'][vdx]-1:,'minimumSOC'] += (ev['minimumSOC'][vdx]+tol)/100 * ev['capacity'][vdx]
-            temp.loc[ev['duration'][vdx]-1:,'demand'] += ev['goalSOC'][vdx]/100 * ev['capacity'][vdx]
-        temp_header = []
-        for l in time_series_list:
-            temp_header.append('arr_{}_'.format(arr)+l)
-        fces_ts.loc[:int(fces_cluster['duration'][arr]-1),temp_header] = temp.to_numpy()
-    
-    header = ['From', 'To','duration','n_ev']
-    fces_cluster[header] = fces_cluster[header].astype('int')
+                fces_ts.loc[:ev['duration'][vdx]-1,'arr_{}_'.format(arr)+l] += ev[l][vdx]
+            fces_ts.loc[:ev['duration'][vdx]-2,'arr_{}_'.format(arr)+'minimumSOC'] += (ev['minimumSOC'][vdx]+tol)/100 * ev['capacity'][vdx]
+            fces_ts.loc[ev['duration'][vdx]-1:fces_cluster['duration'][arr]-1,'arr_{}_'.format(arr)+'minimumSOC'] += (ev['goalSOC'][vdx]+tol)/100 * ev['capacity'][vdx]
+
+            # fces_ts.loc[ev['duration'][vdx]-1:fces_cluster['duration'][arr]-1,'arr_{}_'.format(arr)+'demand'] += ev['goalSOC'][vdx]/100 * ev['capacity'][vdx]
     return fces_ts, fces_cluster
