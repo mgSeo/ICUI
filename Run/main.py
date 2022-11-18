@@ -4,9 +4,13 @@ import pandas as pd
 import numpy as np
 import numpy.matlib
 ## Parameters:
-filename = 'data/Data_Step2.csv'
+# filename = 'data/Data_Step2.csv'
+filename = 'data/Data_Matlab.csv'
 EV = pd.read_csv(filename)
-EV = EV.iloc[:50]
+EV = EV.iloc[:30]
+# EV = EV[EV['serviceFrom'] == 0]
+# EV = EV.reset_index()
+
 filename = 'data/SMP.csv'
 smp = pd.read_csv(filename)
 smp_15term = np.repeat(smp['SMP0105'].to_numpy(), [4])
